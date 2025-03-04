@@ -18,33 +18,50 @@ app.use(
     credentials: true,
     origin: true
   })
-);  // Replace with your API key
-const NOMINATIM_API_URL = "https://nominatim.openstreetmap.org/reverse";
-// const COUNTRY_CURRENCY_API = "https://restcountries.com/v3.1/name/"; // API to fetch country details
+);
 const CURRENCY_API_URL = "https://v6.exchangerate-api.com/v6";
 const CURRENCY_API_KEY = "9dc864c4df843b269f7114d9"; // Replace with your actual Exchange Rate API key
 
-// Function to get country from latitude & longitude
 async function getCountryFromCoords(lat, lng) {
   try {
-      const response = await axios.get(NOMINATIM_API_URL, {
-          params: {
-              lat,
-              lon: lng,
-              format: "json",
-          }
+      const response = await axios.get("https://nominatim.openstreetmap.org/reverse", {
+          params: { lat, lon: lng, format: "json" }
       });
 
-      return response.data.address.country_code.toUpperCase(); // Returns country code (e.g., 'FR')
+      const countryCode = response.data.address?.country_code?.toUpperCase();
+      console.log("Country Code:", countryCode); // ✅ DEBUG: Log country code
+
+      return countryCode || null;
   } catch (error) {
       console.error("Error fetching country:", error.message);
+      return null;
+  }
+}
+async function getCurrencyByCountryBackup(countryCode) {
+  try {
+      const response = await axios.get(`https://api.api-ninjas.com/v1/country?name=${countryCode}`, {
+          headers: { 'X-Api-Key': 'YOUR_API_NINJAS_KEY' }
+      });
+
+      if (!response.data || response.data.length === 0) {
+          throw new Error("Backup API: No country data found.");
+      }
+
+      const currencyCode = response.data[0].currency?.code;
+      console.log("Backup Currency Code:", currencyCode);
+
+      return currencyCode || null;
+  } catch (error) {
+      console.error("Backup API Error fetching currency:", error.message);
       return null;
   }
 }
 async function getCurrencyByCountry(countryCode) {
   try {
       const response = await axios.get(`https://restcountries.com/v3.1/alpha/${countryCode}`);
-      
+
+      console.log("Country Data Response:", response.data); // Debugging log
+
       if (!response.data || response.data.length === 0) {
           throw new Error("No country data found.");
       }
@@ -52,14 +69,18 @@ async function getCurrencyByCountry(countryCode) {
       const countryData = response.data[0];
 
       if (!countryData.currencies) {
-          throw new Error("No currency data available for this country.");
+          throw new Error("No currency data available.");
       }
 
-      const currencyCode = Object.keys(countryData.currencies)[0]; // Extract currency code
+      const currencyCode = Object.keys(countryData.currencies)[0];
+      console.log("Currency Code:", currencyCode);
+
       return currencyCode;
   } catch (error) {
       console.error("Error fetching currency:", error.message);
-      return null;
+      
+      // If restcountries API fails, use a backup
+      return await getCurrencyByCountryBackup(countryCode);
   }
 }
 async function getExchangeRate(currencyCode) {
