@@ -40,7 +40,7 @@ async function getCountryFromCoords(lat, lng) {
 async function getCurrencyByCountryBackup(countryCode) {
   try {
       const response = await axios.get(`https://api.api-ninjas.com/v1/country?name=${countryCode}`, {
-          headers: { 'X-Api-Key': 'YOUR_API_NINJAS_KEY' }
+          headers: { 'X-Api-Key': 'rHG8nY8vpqhpt9Gg6ouNdQ==8gIu0SNRoFmSwCx3' }
       });
 
       if (!response.data || response.data.length === 0) {
