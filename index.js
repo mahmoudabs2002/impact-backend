@@ -1,11 +1,11 @@
+// export default app; // Use ES Module export
 import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import axios from "axios"
-  // Replace with your API key
+import axios from "axios";
 
 const app = express();
 
@@ -16,91 +16,95 @@ app.use(express.urlencoded({ extended: false }));
 app.use(
   cors({
     credentials: true,
-    origin: true
+    origin: true,
   })
 );
+
 const CURRENCY_API_URL = "https://v6.exchangerate-api.com/v6";
-const CURRENCY_API_KEY = "9dc864c4df843b269f7114d9"; // Replace with your actual Exchange Rate API key
+const CURRENCY_API_KEY = "9dc864c4df843b269f7114d9"; // Replace with your Exchange Rate API key
 
-async function getCountryFromCoords(lat, lng) {
+const BACKUP_CURRENCY_API_URL = "https://api.api-ninjas.com/v1/exchangerate";
+const BACKUP_CURRENCY_API_KEY = "rHG8nY8vpqhpt9Gg6ouNdQ==8gIu0SNRoFmSwCx3"; // Replace with your API Ninjas key
+
+const IP_API_URL = "http://ip-api.com/json/";
+
+async function getCountryFromIP(ip) {
   try {
-      const response = await axios.get("https://nominatim.openstreetmap.org/reverse", {
-          params: { lat, lon: lng, format: "json" }
-      });
+    const response = await axios.get(`${IP_API_URL}${ip}`);
+    if (response.data.status !== "success") throw new Error("Invalid response");
 
-      const countryCode = response.data.address?.country_code?.toUpperCase();
-      console.log("Country Code:", countryCode); // ✅ DEBUG: Log country code
-
-      return countryCode || null;
+    const countryCode = response.data.countryCode;
+    console.log("Country Code:", countryCode); // ✅ DEBUG: Log country code
+    console.log("IP Data Response:", response.data);
+    return countryCode || null;
   } catch (error) {
-      console.error("Error fetching country:", error.message);
-      return null;
+    console.error("Error fetching country from IP:", error.message);
+    return null;
   }
 }
-async function getCurrencyByCountryBackup(countryCode) {
-  try {
-      const response = await axios.get(`https://api.api-ninjas.com/v1/country?name=${countryCode}`, {
-          headers: { 'X-Api-Key': 'rHG8nY8vpqhpt9Gg6ouNdQ==8gIu0SNRoFmSwCx3' }
-      });
 
-      if (!response.data || response.data.length === 0) {
-          throw new Error("Backup API: No country data found.");
-      }
-
-      const currencyCode = response.data[0].currency?.code;
-      console.log("Backup Currency Code:", currencyCode);
-
-      return currencyCode || null;
-  } catch (error) {
-      console.error("Backup API Error fetching currency:", error.message);
-      return null;
-  }
-}
 async function getCurrencyByCountry(countryCode) {
   try {
-      const response = await axios.get(`https://restcountries.com/v3.1/alpha/${countryCode}`);
+    const response = await axios.get(`https://restcountries.com/v3.1/alpha/${countryCode}`);
+    if (!response.data || response.data.length === 0) throw new Error("No country data found.");
 
-      console.log("Country Data Response:", response.data); // Debugging log
+    const countryData = response.data[0];
+    if (!countryData.currencies) throw new Error("No currency data available.");
 
-      if (!response.data || response.data.length === 0) {
-          throw new Error("No country data found.");
-      }
+    const currencyCode = Object.keys(countryData.currencies)[0];
+    console.log("Currency Code:", currencyCode);
 
-      const countryData = response.data[0];
-
-      if (!countryData.currencies) {
-          throw new Error("No currency data available.");
-      }
-
-      const currencyCode = Object.keys(countryData.currencies)[0];
-      console.log("Currency Code:", currencyCode);
-
-      return currencyCode;
+    return currencyCode;
   } catch (error) {
-      console.error("Error fetching currency:", error.message);
-      
-      // If restcountries API fails, use a backup
-      return await getCurrencyByCountryBackup(countryCode);
+    console.error("Error fetching currency:", error.message);
+    return null;
   }
 }
+
 async function getExchangeRate(currencyCode) {
   try {
-      const response = await axios.get(`${CURRENCY_API_URL}/${CURRENCY_API_KEY}/latest/USD`);
-      return response.data.conversion_rates[currencyCode] || null;
+    // Primary API
+    const response = await axios.get(`${CURRENCY_API_URL}/${CURRENCY_API_KEY}/latest/USD`);
+    const exchangeRate = response.data.conversion_rates[currencyCode];
+    if (!exchangeRate) throw new Error("Primary API: No exchange rate found.");
+    
+    return exchangeRate;
   } catch (error) {
-      console.error("Error fetching exchange rate:", error.message);
-      return null;
+    console.error("Primary API Error:", error.message);
+    
+    // Backup API
+    return await getExchangeRateBackup(currencyCode);
   }
 }
+
+async function getExchangeRateBackup(currencyCode) {
+  try {
+    const response = await axios.get(`${BACKUP_CURRENCY_API_URL}?pair=USD_${currencyCode}`, {
+      headers: { "X-Api-Key": BACKUP_CURRENCY_API_KEY },
+    });
+
+    if (!response.data.exchange_rate) throw new Error("Backup API: No exchange rate found.");
+
+    console.log("Backup Exchange Rate:", response.data.exchange_rate);
+    return response.data.exchange_rate;
+  } catch (error) {
+    console.error("Backup API Error:", error.message);
+    return null;
+  }
+}
+
 // Root Route
 app.post("/get-currency", async (req, res) => {
-  const { latitude, longitude , priceUSD } = req.body;
+  const { priceUSD } = req.body;
+  const ip =  req.body.ip ||  req.headers["x-forwarded-for"] || req.socket.remoteAddress;
 
-  if (!latitude || !longitude) {
-      return res.status(400).json({ error: "Latitude and longitude are required." });
+  if (ip && ip.includes(",")) ip = ip.split(",")[0].trim();
+
+  if (!ip) {
+    return res.status(400).json({ error: "Could not retrieve IP address." });
   }
 
-  const countryCode = await getCountryFromCoords(latitude, longitude);
+  const countryCode = await getCountryFromIP(ip);
   if (!countryCode) return res.status(500).json({ error: "Could not determine country." });
 
   const currencyCode = await getCurrencyByCountry(countryCode);
@@ -108,17 +112,17 @@ app.post("/get-currency", async (req, res) => {
 
   const exchangeRate = await getExchangeRate(currencyCode);
   if (exchangeRate === null) return res.status(500).json({ error: "Could not fetch exchange rate." });
-    // Convert price to local currency
-    const finalPrice = (priceUSD * exchangeRate).toFixed(2);
-  // Send JSON response to client
+
+  // Convert price to local currency
+  const finalPrice = (priceUSD * exchangeRate).toFixed(2);
+
   res.json({
-      countryCode,
-      currency: currencyCode,
-      exchangeRate: `1 USD = ${exchangeRate} ${currencyCode}`,
-      finalPrice: `${finalPrice} ${currencyCode}`
+    countryCode,
+    currency: currencyCode,
+    exchangeRate: `1 USD = ${exchangeRate} ${currencyCode}`,
+    finalPrice: `${finalPrice} ${currencyCode}`,
   });
 });
-
 
 // Start the server
 const port = process.env.SERVER_PORT || 5000;
@@ -126,4 +130,4 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
-export default app; // Use ES Module export
+export default app;
