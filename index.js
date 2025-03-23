@@ -21,7 +21,7 @@ app.use(
 );
 
 const CURRENCY_API_URL = "https://v6.exchangerate-api.com/v6";
-const CURRENCY_API_KEY = "9dc864c4df843b269f7114d9"; // Replace with your Exchange Rate API key
+const CURRENCY_API_KEY = "d8d196738edd7185fd520cb9"; // Replace with your Exchange Rate API key
 
 const BACKUP_CURRENCY_API_URL = "https://api.api-ninjas.com/v1/exchangerate";
 const BACKUP_CURRENCY_API_KEY = "rHG8nY8vpqhpt9Gg6ouNdQ==8gIu0SNRoFmSwCx3"; // Replace with your API Ninjas key
